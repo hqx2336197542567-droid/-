@@ -1,3 +1,5 @@
+import eventlet
+eventlet.monkey_patch()
 from flask import Flask, render_template, request, redirect, url_for, session, flash
 from flask_login import LoginManager, login_user, login_required, logout_user, current_user
 from extensions import db, socketio
@@ -249,4 +251,5 @@ if __name__ == '__main__':
         except: pass
     # 允许局域网访问
     socketio.run(app, host='0.0.0.0', debug=True, port=5000)
+
     
