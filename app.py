@@ -1,5 +1,7 @@
 import eventlet
 eventlet.monkey_patch()
+
+import os
 from flask import Flask, render_template, request, redirect, url_for, session, flash
 from flask_login import LoginManager, login_user, login_required, logout_user, current_user
 from extensions import db, socketio
@@ -10,25 +12,26 @@ import random
 from datetime import datetime, timedelta
 import traceback 
 
-import os # 记得确保顶部引入了 os
-
 app = Flask(__name__)
 app.config['SECRET_KEY'] = 'secret_key_123'
 
-# ★★★ 数据库智能切换 ★★★
-# 1. 尝试获取云端数据库地址
+# ==========================================
+# ★★★ 数据库智能连接 (核心修复) ★★★
+# ==========================================
 database_url = os.environ.get('DATABASE_URL')
 
-# 2. Render 给的地址通常是 postgres:// 开头，但 SQLAlchemy 需要 postgresql://
-if database_url and database_url.startswith("postgres://"):
-    database_url = database_url.replace("postgres://", "postgresql://", 1)
-
-# 3. 如果有云端地址就用云端的，否则用本地 SQLite
-app.config['SQLALCHEMY_DATABASE_URI'] = database_url or 'sqlite:///classsync.db'
+if database_url:
+    # 修复 Render 提供的 URL 格式，适配 SQLAlchemy
+    if database_url.startswith("postgres://"):
+        database_url = database_url.replace("postgres://", "postgresql://", 1)
+    app.config['SQLALCHEMY_DATABASE_URI'] = database_url
+    print(f"--- 🌍 检测到云端数据库环境 ---")
+else:
+    # 本地开发使用 SQLite
+    app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:///classsync.db'
+    print(f"--- 💻 使用本地 SQLite 数据库 ---")
 
 app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
-app.config['SESSION_PERMANENT'] = True
-app.config['PERMANENT_SESSION_LIFETIME'] = timedelta(minutes=60)
 app.config['SESSION_PERMANENT'] = True
 app.config['PERMANENT_SESSION_LIFETIME'] = timedelta(minutes=60)
 
@@ -81,24 +84,29 @@ def login():
     if request.method == 'POST':
         username = request.form.get('username')
         password = request.form.get('password')
-        user = User.query.filter_by(username=username).first()
-        if not user:
-            is_admin = (username == 'admin')
-            user = User(username=username, password=password, is_admin=is_admin)
-            db.session.add(user)
-            db.session.commit()
-            login_user(user, remember=True)
-            return redirect(url_for('index'))
-        if user.password == password:
-            login_user(user, remember=True)
-            return redirect(url_for('index'))
-        else:
-            if username == 'admin': 
-                user.password = password
+        try:
+            user = User.query.filter_by(username=username).first()
+            if not user:
+                is_admin = (username == 'admin')
+                user = User(username=username, password=password, is_admin=is_admin)
+                db.session.add(user)
                 db.session.commit()
                 login_user(user, remember=True)
                 return redirect(url_for('index'))
-            return render_template('login.html', error="密码错误")
+            if user.password == password:
+                login_user(user, remember=True)
+                return redirect(url_for('index'))
+            else:
+                if username == 'admin': 
+                    user.password = password
+                    db.session.commit()
+                    login_user(user, remember=True)
+                    return redirect(url_for('index'))
+                return render_template('login.html', error="密码错误")
+        except Exception as e:
+            print(f"Login Error: {e}")
+            traceback.print_exc()
+            return "数据库连接错误，请检查日志", 500
     return render_template('login.html')
 
 @app.route('/teacher')
@@ -120,7 +128,8 @@ def student_dashboard():
             .order_by(Answer.timestamp.desc())\
             .limit(50).all()
         return render_template('student.html', user=current_user, stats=stats, achievements=achievements, current_q_key=current_q_key, history=history_records)
-    except:
+    except Exception as e:
+        traceback.print_exc()
         return redirect(url_for('logout'))
 
 @app.route('/logout')
@@ -134,30 +143,58 @@ def handle_connect(): pass
 @socketio.on('get_all_students_stats')
 def handle_get_all_stats():
     if not current_user.is_admin: return
-    users = User.query.filter_by(is_admin=False).all()
-    current_q = calculate_quarter()
-    data_list = []
-    for u in users:
-        stats = json.loads(u.stats) if u.stats else {}
-        curr_data = stats.get(current_q, {'total': 0, 'correct': 0})
-        curr_rate = round((curr_data['correct'] / curr_data['total'] * 100), 1) if curr_data['total'] > 0 else 0
-        all_total = 0
-        all_correct = 0
-        for q_key, q_val in stats.items():
-            all_total += q_val.get('total', 0)
-            all_correct += q_val.get('correct', 0)
-        all_rate = round((all_correct / all_total * 100), 1) if all_total > 0 else 0
-        data_list.append({
-            'username': u.username,
-            'curr_total': curr_data['total'],
-            'curr_correct': curr_data['correct'],
-            'curr_rate': curr_rate,
-            'all_total': all_total,
-            'all_correct': all_correct,
-            'all_wrong': all_total - all_correct,
-            'all_rate': all_rate
-        })
-    socketio.emit('all_students_stats_response', data_list, to=request.sid)
+    try:
+        users = User.query.filter_by(is_admin=False).all()
+        current_q = calculate_quarter()
+        data_list = []
+        for u in users:
+            stats = json.loads(u.stats) if u.stats else {}
+            curr_data = stats.get(current_q, {'total': 0, 'correct': 0})
+            curr_rate = round((curr_data['correct'] / curr_data['total'] * 100), 1) if curr_data['total'] > 0 else 0
+            all_total = 0
+            all_correct = 0
+            for q_key, q_val in stats.items():
+                all_total += q_val.get('total', 0)
+                all_correct += q_val.get('correct', 0)
+            all_rate = round((all_correct / all_total * 100), 1) if all_total > 0 else 0
+            data_list.append({
+                'username': u.username,
+                'curr_total': curr_data['total'],
+                'curr_correct': curr_data['correct'],
+                'curr_rate': curr_rate,
+                'all_total': all_total,
+                'all_correct': all_correct,
+                'all_wrong': all_total - all_correct,
+                'all_rate': all_rate
+            })
+        socketio.emit('all_students_stats_response', data_list, to=request.sid)
+    except: traceback.print_exc()
+
+@socketio.on('get_questions_history')
+def handle_get_questions_history():
+    if not current_user.is_admin: return
+    try:
+        questions = Question.query.order_by(Question.timestamp.desc()).all()
+        history_data = []
+        for q in questions:
+            answers = Answer.query.filter_by(question_id=q.id).all()
+            ans_details = []
+            correct_count = 0
+            for ans in answers:
+                if ans.is_correct: correct_count += 1
+                ans_details.append({'student': ans.student_name, 'content': ans.content, 'is_correct': ans.is_correct})
+            correct_display = "未设置"
+            if q.correct_answer:
+                try:
+                    c_list = json.loads(q.correct_answer)
+                    correct_display = " / ".join(c_list) if isinstance(c_list, list) else str(c_list)
+                except: correct_display = q.correct_answer
+            history_data.append({
+                'id': q.id, 'content': q.content, 'type': q.question_type, 'timestamp': q.timestamp.strftime('%Y-%m-%d %H:%M'),
+                'correct_answer': correct_display, 'total_answers': len(answers), 'correct_count': correct_count, 'details': ans_details
+            })
+        socketio.emit('questions_history_response', history_data, to=request.sid)
+    except: traceback.print_exc()
 
 @socketio.on('new_question')
 def handle_new_question(data):
@@ -255,17 +292,26 @@ def handle_stop_grade(data):
         socketio.emit('grading_complete', {'groups': groups, 'type': question.question_type, 'stats': {'total': total_students, 'correct': correct_count, 'answer': display_ans_str}})
     except Exception as e: traceback.print_exc()
 
+# ==========================================
+# ★★★ 数据库初始化 (云端/本地双适配) ★★★
+# ==========================================
+with app.app_context():
+    try:
+        # 仅在表不存在时创建，避免覆盖数据（Render PostgreSQL 是持久的）
+        # 如果想强制重置，可以取消注释 db.drop_all()，但生产环境不建议
+        # db.drop_all() 
+        db.create_all()
+        
+        # 检查管理员是否存在
+        if not User.query.filter_by(username='admin').first():
+            admin = User(username='admin', password='123', is_admin=True)
+            db.session.add(admin)
+            db.session.commit()
+            print("--- 🔑 管理员账号初始化完成: admin / 123 ---")
+        else:
+            print("--- ✅ 数据库检查通过，管理员已存在 ---")
+    except Exception as e:
+        print(f"!!! 数据库初始化警告: {e}")
+
 if __name__ == '__main__':
-    with app.app_context():
-        db.create_all() 
-        try:
-            if not User.query.filter_by(username='admin').first():
-                admin = User(username='admin', password='123', is_admin=True)
-                db.session.add(admin)
-                db.session.commit()
-        except: pass
-    # 允许局域网访问
     socketio.run(app, host='0.0.0.0', debug=True, port=5000)
-
-    
-
