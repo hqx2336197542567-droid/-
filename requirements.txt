@@ -1,2 +1,6 @@
-gunicorn
+Flask
+Flask-Login
+Flask-SocketIO
+Flask-SQLAlchemy
 eventlet
+gunicorn
