@@ -16,18 +16,15 @@ app = Flask(__name__)
 app.config['SECRET_KEY'] = 'secret_key_123'
 
 # ==========================================
-# ★★★ 数据库智能连接 (核心修复) ★★★
+# ★★★ 数据库智能连接 ★★★
 # ==========================================
 database_url = os.environ.get('DATABASE_URL')
-
 if database_url:
-    # 修复 Render 提供的 URL 格式，适配 SQLAlchemy
     if database_url.startswith("postgres://"):
         database_url = database_url.replace("postgres://", "postgresql://", 1)
     app.config['SQLALCHEMY_DATABASE_URI'] = database_url
     print(f"--- 🌍 检测到云端数据库环境 ---")
 else:
-    # 本地开发使用 SQLite
     app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:///classsync.db'
     print(f"--- 💻 使用本地 SQLite 数据库 ---")
 
@@ -183,12 +180,14 @@ def handle_get_questions_history():
             for ans in answers:
                 if ans.is_correct: correct_count += 1
                 ans_details.append({'student': ans.student_name, 'content': ans.content, 'is_correct': ans.is_correct})
+            
             correct_display = "未设置"
             if q.correct_answer:
                 try:
                     c_list = json.loads(q.correct_answer)
                     correct_display = " / ".join(c_list) if isinstance(c_list, list) else str(c_list)
                 except: correct_display = q.correct_answer
+
             history_data.append({
                 'id': q.id, 'content': q.content, 'type': q.question_type, 'timestamp': q.timestamp.strftime('%Y-%m-%d %H:%M'),
                 'correct_answer': correct_display, 'total_answers': len(answers), 'correct_count': correct_count, 'details': ans_details
@@ -215,6 +214,7 @@ def handle_answer(data):
         socketio.emit('receive_danmaku', {'student': current_user.username, 'content': data['content']}, to=None)
     except: pass
 
+# 模拟数据
 @socketio.on('simulate_data')
 def handle_simulation(data):
     if not current_user.is_admin: return
@@ -239,6 +239,26 @@ def handle_simulation(data):
         socketio.emit('receive_danmaku', {'student': bot_name, 'content': content}, to=None)
     db.session.commit()
     socketio.emit('simulation_done', {'count': count})
+
+# ★★★ 核心修复：清除 Bot 数据逻辑 (v3.15) ★★★
+@socketio.on('clear_bots')
+def handle_clear_bots():
+    if not current_user.is_admin: return
+    try:
+        print("🧹 开始清理机器人数据...")
+        # 1. 删除所有机器人的回答 (Like 'Bot_%')
+        Answer.query.filter(Answer.student_name.like('Bot_%')).delete(synchronize_session=False)
+        # 2. 删除所有机器人用户
+        User.query.filter(User.username.like('Bot_%')).delete(synchronize_session=False)
+        db.session.commit()
+        print(f"✅ 清理完成")
+        # 通知前端并刷新数据
+        socketio.emit('simulation_done', {'count': "已清空"})
+        handle_get_all_stats()
+    except Exception as e:
+        db.session.rollback()
+        print(f"❌ 清理失败: {e}")
+        traceback.print_exc()
 
 @socketio.on('stop_and_grade')
 def handle_stop_grade(data):
@@ -292,17 +312,10 @@ def handle_stop_grade(data):
         socketio.emit('grading_complete', {'groups': groups, 'type': question.question_type, 'stats': {'total': total_students, 'correct': correct_count, 'answer': display_ans_str}})
     except Exception as e: traceback.print_exc()
 
-# ==========================================
-# ★★★ 数据库初始化 (云端/本地双适配) ★★★
-# ==========================================
+# 数据库初始化
 with app.app_context():
     try:
-        # 仅在表不存在时创建，避免覆盖数据（Render PostgreSQL 是持久的）
-        # 如果想强制重置，可以取消注释 db.drop_all()，但生产环境不建议
-        # db.drop_all() 
         db.create_all()
-        
-        # 检查管理员是否存在
         if not User.query.filter_by(username='admin').first():
             admin = User(username='admin', password='123', is_admin=True)
             db.session.add(admin)
