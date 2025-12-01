@@ -10,10 +10,25 @@ import random
 from datetime import datetime, timedelta
 import traceback 
 
+import os # 记得确保顶部引入了 os
+
 app = Flask(__name__)
 app.config['SECRET_KEY'] = 'secret_key_123'
-app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:///classsync.db'
+
+# ★★★ 数据库智能切换 ★★★
+# 1. 尝试获取云端数据库地址
+database_url = os.environ.get('DATABASE_URL')
+
+# 2. Render 给的地址通常是 postgres:// 开头，但 SQLAlchemy 需要 postgresql://
+if database_url and database_url.startswith("postgres://"):
+    database_url = database_url.replace("postgres://", "postgresql://", 1)
+
+# 3. 如果有云端地址就用云端的，否则用本地 SQLite
+app.config['SQLALCHEMY_DATABASE_URI'] = database_url or 'sqlite:///classsync.db'
+
 app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
+app.config['SESSION_PERMANENT'] = True
+app.config['PERMANENT_SESSION_LIFETIME'] = timedelta(minutes=60)
 app.config['SESSION_PERMANENT'] = True
 app.config['PERMANENT_SESSION_LIFETIME'] = timedelta(minutes=60)
 
@@ -253,3 +268,4 @@ if __name__ == '__main__':
     socketio.run(app, host='0.0.0.0', debug=True, port=5000)
 
     
+
