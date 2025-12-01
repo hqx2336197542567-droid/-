@@ -61,7 +61,16 @@
                 <button id="btn_pub" onclick="sendQuestion()" class="h-14 px-8 rounded-2xl bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-500 hover:to-indigo-500 text-white font-black text-lg shadow-xl shadow-blue-900/30 transition transform active:scale-95 flex items-center gap-2">🚀 发布</button>
                 <button id="btn_stop" onclick="showGradeModal()" class="hidden h-14 px-8 rounded-2xl bg-gradient-to-r from-rose-600 to-pink-600 hover:from-rose-500 hover:to-pink-500 text-white font-black text-lg shadow-xl shadow-rose-900/30 transition transform active:scale-95 flex items-center gap-2">🛑 结算</button>
             </div>
-            <div class="flex items-center gap-4">
+            <div class="flex items-center gap-6">
+                <!-- 状态显示 -->
+                <div class="flex flex-col items-end">
+                    <span id="status_text" class="text-[10px] font-black text-slate-600 uppercase tracking-widest transition-colors">IDLE</span>
+                    <div class="flex gap-1 mt-1">
+                        <div class="w-1 h-1 rounded-full bg-slate-600 transition-colors" id="status_dot_1"></div>
+                        <div class="w-1 h-1 rounded-full bg-slate-600 transition-colors" id="status_dot_2"></div>
+                        <div class="w-1 h-1 rounded-full bg-slate-600 transition-colors" id="status_dot_3"></div>
+                    </div>
+                </div>
                 <button id="privacy_btn" onclick="togglePrivacy()" class="h-10 px-4 rounded-xl bg-slate-800/50 border border-slate-700 text-slate-400 hover:text-white hover:border-slate-500 transition text-xs font-bold flex items-center gap-2"><span id="privacy_icon">👁️</span> <span id="privacy_text">答案可见</span></button>
             </div>
         </header>
@@ -85,9 +94,13 @@
                         <div class="text-8xl font-black tracking-tighter opacity-30">READY</div>
                         <div class="text-sm font-bold tracking-[1em] mt-4 opacity-30 text-blue-500 uppercase">System Standby</div>
                     </div>
+
+                    <!-- 弹幕层 -->
                     <div id="danmaku_container" class="absolute inset-0 overflow-y-auto p-8 scroll-smooth z-10 transition-all duration-700 custom-scrollbar">
                         <div id="danmaku_stage" class="flex flex-wrap content-start gap-3 min-h-full pb-32 pr-20"></div>
                     </div>
+
+                    <!-- 结果展示层 -->
                     <div id="result_container" class="absolute inset-0 z-50 bg-[#0f172a]/95 backdrop-blur-xl flex flex-col border-t border-blue-500/30 shadow-[0_-20px_50px_rgba(0,0,0,0.8)]" style="visibility: hidden; opacity: 0; transform: translateY(100%);">
                         <div class="h-16 border-b border-slate-800 flex items-center justify-center relative bg-[#0f172a]">
                             <span class="text-sm font-black text-blue-400 uppercase tracking-[0.3em]">Analysis Result</span>
@@ -158,19 +171,17 @@
         <div class="w-12 h-12 rounded-full bg-slate-800/80 backdrop-blur border border-slate-600 flex items-center justify-center cursor-pointer hover:bg-slate-700 shadow-xl group-hover:hidden transition text-slate-400 text-xl">⚡</div>
         <div class="hidden group-hover:flex flex-col bg-[#0f172a] border border-slate-600 p-4 rounded-xl shadow-2xl w-56 animate-fade-in-up">
             <h4 class="text-white font-bold mb-3 border-b border-slate-700 pb-2 text-xs">压力测试</h4>
-            <button onclick="simulate('random')" class="mb-2 w-full py-2 rounded bg-purple-600 hover:bg-purple-500 text-white text-xs font-bold">🎲 60 Bots</button>
-            <button onclick="simulate('stacked')" class="mb-4 w-full py-2 rounded bg-orange-600 hover:bg-orange-500 text-white text-xs font-bold">🏢 50 Stack</button>
-            
-            <!-- ★★★ 新增清除按钮 ★★★ -->
+            <button onclick="simulate('random')" class="mb-2 w-full py-2 rounded bg-purple-600 hover:bg-purple-500 text-white text-xs font-bold">🎲 60 Bots (Random)</button>
+            <button onclick="simulate('stacked')" class="mb-4 w-full py-2 rounded bg-orange-600 hover:bg-orange-500 text-white text-xs font-bold">🏢 50 Bots (Stack)</button>
+            <!-- 清除按钮 -->
             <button onclick="clearBots()" class="w-full py-2 rounded border border-red-500/50 text-red-400 hover:bg-red-900/30 text-xs font-bold transition flex items-center justify-center gap-2">
-                🗑️ 清除 Bots
+                <span>🗑️</span> 清除 Bots
             </button>
-            
             <div id="sim_status" class="text-[10px] text-slate-400 mt-2 text-center border-t border-slate-800 pt-2">Idle</div>
         </div>
     </div>
 
-    <div class="fixed bottom-2 left-2 text-[10px] text-slate-700 pointer-events-none select-none z-50">v3.15 Final</div>
+    <div class="fixed bottom-2 left-2 text-[10px] text-slate-700 pointer-events-none select-none z-50">v3.16 Stable</div>
 </div>
 
 <script src="https://cdnjs.cloudflare.com/ajax/libs/gsap/3.12.2/gsap.min.js"></script>
@@ -211,6 +222,8 @@
         const statusText = document.getElementById('status_text');
         const hint = document.getElementById('waiting_hint');
         const dmCont = document.getElementById('danmaku_container');
+        const dots = [document.getElementById('status_dot_1'), document.getElementById('status_dot_2'), document.getElementById('status_dot_3')];
+
         if(state === 'live') {
             if(statusText) { statusText.innerText = "LIVE RECEIVING"; statusText.className = "text-[10px] font-black text-green-500 uppercase tracking-widest animate-pulse"; }
             gsap.to(resCont, { y: "100%", autoAlpha: 0, duration: 0.5, ease: "power2.in" });
@@ -292,9 +305,9 @@
     }
     socket.on('simulation_done', (data) => document.getElementById('sim_status').innerText = `Done: ${data.count}`);
     
-    // ★★★ 新增：清除 Bot 的前端逻辑 ★★★
+    // 清除 Bot
     function clearBots() {
-        if (!confirm("⚠️ 确定要删除所有机器人数据吗？\n这将清空所有以 'Bot_' 开头的用户和回答。")) return;
+        if (!confirm("确定清除 Bot 数据？")) return;
         document.getElementById('sim_status').innerText = "Cleaning...";
         socket.emit('clear_bots');
     }
@@ -349,6 +362,7 @@
         });
     });
 
+    // ★★★ 修复历史列表 (无动画直显) ★★★
     socket.on('questions_history_response', (data) => {
         const container = document.getElementById('view_question_data');
         container.innerHTML = '';
@@ -361,7 +375,19 @@
             item.className = "group glass bg-slate-800/30 border border-slate-700/50 rounded-xl overflow-hidden open:bg-slate-800/60 transition-all";
             const summary = document.createElement('summary');
             summary.className = "cursor-pointer p-4 flex items-center justify-between list-none hover:bg-white/5 transition";
-            summary.innerHTML = `<div class="flex items-center gap-4"><div class="w-8 h-8 rounded bg-slate-700 flex items-center justify-center text-xs font-bold text-slate-400 border border-slate-600">${data.length - idx}</div><div><div class="text-white font-bold text-lg">${q.content}</div><div class="text-slate-500 text-xs mt-0.5 font-mono">${q.timestamp} • ${q.type === 'sort' ? '排序' : '单选'}</div></div></div><div class="flex items-center gap-6"><div class="text-right"><div class="text-xs text-slate-500">Answer</div><div class="font-bold text-emerald-400 font-mono">${q.correct_answer}</div></div><div class="text-right"><div class="text-xs text-slate-500">Stats</div><div class="font-bold text-white"><span class="text-emerald-400">${q.correct_count}</span> / ${q.total_answers}</div></div><span class="text-slate-500 transform group-open:rotate-180 transition">▼</span></div>`;
+            summary.innerHTML = `
+                <div class="flex items-center gap-4">
+                    <div class="w-8 h-8 rounded bg-slate-700 flex items-center justify-center text-xs font-bold text-slate-400 border border-slate-600">${data.length - idx}</div>
+                    <div>
+                        <div class="text-white font-bold text-lg">${q.content}</div>
+                        <div class="text-slate-500 text-xs mt-0.5 font-mono">${q.timestamp} • ${q.type === 'sort' ? '排序' : '单选'}</div>
+                    </div>
+                </div>
+                <div class="flex items-center gap-6">
+                    <div class="text-right"><div class="text-xs text-slate-500">Answer</div><div class="font-bold text-emerald-400 font-mono">${q.correct_answer}</div></div>
+                    <div class="text-right"><div class="text-xs text-slate-500">Stats</div><div class="font-bold text-white"><span class="text-emerald-400">${q.correct_count}</span> / ${q.total_answers}</div></div>
+                    <span class="text-slate-500 transform group-open:rotate-180 transition">▼</span>
+                </div>`;
             const content = document.createElement('div');
             content.className = "p-4 border-t border-slate-700/50 bg-black/20";
             if(q.details.length > 0) {
@@ -374,8 +400,7 @@
                 content.innerHTML = blocks;
             } else { content.innerHTML = `<div class="text-slate-500 text-xs italic">No answers.</div>`; }
             item.appendChild(summary); item.appendChild(content); container.appendChild(item);
-            if(idx < 12) { gsap.from(item, {opacity: 0, y: 20, duration: 0.3, delay: idx * 0.05}); } 
-            else { gsap.set(item, {opacity: 1, y: 0}); }
+            // 无 GSAP
         });
     });
 
