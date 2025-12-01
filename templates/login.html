@@ -1,0 +1,23 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="flex items-center justify-center h-screen">
+    <div class="glass p-10 w-96 text-center">
+        <h1 class="text-3xl font-bold mb-6">ClassSync 登录</h1>
+        
+        {% if error %}
+        <div class="bg-red-500/50 text-white p-2 rounded mb-4 text-sm">{{ error }}</div>
+        {% endif %}
+
+        <form method="POST">
+            <input name="username" type="text" placeholder="用户名 (admin为老师)" required 
+                   class="w-full p-3 mb-4 rounded bg-white/20 text-white placeholder-gray-400 outline-none focus:ring-2 ring-blue-500">
+            
+            <input name="password" type="password" placeholder="密码 (第一次登录自动注册)" required
+                   class="w-full p-3 mb-6 rounded bg-white/20 text-white placeholder-gray-400 outline-none focus:ring-2 ring-blue-500">
+            
+            <button class="w-full bg-blue-600 hover:bg-blue-500 text-white p-3 rounded transition font-bold">进入系统</button>
+        </form>
+        <p class="text-xs text-gray-400 mt-4">注意：初次输入即设置为密码</p>
+    </div>
+</div>
+{% endblock %}

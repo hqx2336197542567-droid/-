@@ -1,0 +1,539 @@
+{% extends "base.html" %}
+{% block content %}
+
+<!-- 断线提示 -->
+<div id="connection_status" class="fixed top-0 left-0 w-full bg-red-600 text-white text-center text-xs py-1 hidden z-[100]">
+    ⚠️ 网络连接中断，尝试重连中...
+</div>
+
+<!-- ================= 核心布局容器 (PC/Mobile 响应式) ================= -->
+<div class="flex h-screen w-full overflow-hidden bg-[#0f172a] text-slate-200 font-sans relative">
+    
+    <!-- ★★★ 背景交互层 (全屏 Canvas) ★★★ -->
+    <canvas id="bg_canvas" class="absolute inset-0 z-0"></canvas>
+    <!-- 背景遮罩，让文字更清晰 -->
+    <div class="absolute inset-0 bg-[#0f172a]/40 z-0 pointer-events-none backdrop-blur-[1px]"></div>
+
+    <!-- ================= 左侧侧边栏 (PC显示 / Mobile隐藏) ================= -->
+    <aside class="hidden md:flex flex-col w-72 h-full glass border-r border-slate-700/50 bg-slate-900/60 relative z-20 p-6 transition-all duration-300">
+        <!-- Logo区 -->
+        <div class="flex items-center gap-3 mb-10">
+            <div class="w-10 h-10 rounded-lg bg-gradient-to-br from-blue-600 to-cyan-500 flex items-center justify-center text-xl font-bold text-white shadow-lg shadow-blue-500/30">C</div>
+            <div>
+                <h1 class="font-bold text-lg tracking-tight text-white">ClassSync</h1>
+                <p class="text-[10px] text-slate-400 uppercase tracking-widest">Student Console</p>
+            </div>
+        </div>
+
+        <!-- 用户卡片 -->
+        <div class="bg-slate-800/50 p-4 rounded-xl border border-slate-700/50 mb-8 flex items-center gap-4">
+            <div class="w-12 h-12 rounded-full bg-gradient-to-tr from-cyan-500 to-blue-600 flex items-center justify-center font-bold text-white text-lg shadow-inner">
+                {{ user.username[0]|upper }}
+            </div>
+            <div>
+                <div class="font-bold text-white">{{ user.username }}</div>
+                <div class="flex items-center gap-2 mt-1">
+                    <span class="w-2 h-2 rounded-full bg-green-500 animate-pulse"></span>
+                    <span class="text-xs text-green-400">Online</span>
+                </div>
+            </div>
+        </div>
+
+        <!-- 导航菜单 -->
+        <nav class="flex-1 space-y-2">
+            <button onclick="switchTab('quiz')" id="pc-nav-quiz" class="w-full flex items-center gap-4 px-4 py-3 rounded-xl transition-all duration-200 group bg-blue-600 text-white shadow-lg shadow-blue-900/50">
+                <span class="text-xl">⚡</span>
+                <span class="font-bold">答题大厅</span>
+                <span class="ml-auto opacity-0 group-hover:opacity-100 transition-opacity">→</span>
+            </button>
+            <button onclick="switchTab('profile')" id="pc-nav-profile" class="w-full flex items-center gap-4 px-4 py-3 rounded-xl hover:bg-slate-800/50 text-slate-400 hover:text-white transition-all duration-200 group">
+                <span class="text-xl">📊</span>
+                <span class="font-bold">数据中心</span>
+            </button>
+        </nav>
+
+        <!-- 底部退出 -->
+        <a href="/logout" class="flex items-center gap-2 text-slate-500 hover:text-red-400 transition px-4 py-2 mt-auto">
+            <span class="text-lg">🚪</span>
+            <span class="text-sm font-bold">退出登录</span>
+        </a>
+    </aside>
+
+    <!-- ================= 主内容区 ================= -->
+    <main class="flex-1 relative z-10 flex flex-col h-full overflow-hidden">
+        
+        <!-- Mobile 顶部栏 (PC隐藏) -->
+        <div class="md:hidden flex justify-between items-center p-4 glass border-b border-slate-700/50">
+            <div class="font-bold text-white">{{ user.username }}</div>
+            <div class="text-xs px-2 py-1 rounded bg-green-500/20 text-green-400 border border-green-500/30">Online</div>
+        </div>
+
+        <!-- 内容滚动视口 -->
+        <div class="flex-1 overflow-y-auto relative scroll-smooth">
+            
+            <!-- 场景 1: 答题大厅 -->
+            <div id="view-quiz" class="min-h-full flex flex-col items-center justify-center p-4 md:p-10 transition-all duration-500">
+                
+                <!-- 等待状态 (PC端优化：大字号，鼠标互动提示) -->
+                <div id="waiting_area" class="text-center pointer-events-none select-none">
+                    <div class="relative inline-block">
+                        <h2 class="text-6xl md:text-8xl font-black text-transparent bg-clip-text bg-gradient-to-b from-white to-slate-600 tracking-tighter opacity-80">READY</h2>
+                        <div class="absolute -top-4 -right-4 w-4 h-4 bg-cyan-500 rounded-full animate-ping"></div>
+                    </div>
+                    <p class="text-cyan-400/80 mt-4 text-sm md:text-base font-mono tracking-[0.3em] uppercase animate-pulse">System Standby // Awaiting Input</p>
+                    <p class="text-slate-600 mt-8 text-xs md:text-sm">🖱️ 长按左键生成引力场 • 移动鼠标扰动粒子</p>
+                </div>
+
+                <!-- 答题卡片 (PC端优化：更宽，毛玻璃更重) -->
+                <div id="question_area" class="hidden w-full max-w-3xl glass border border-slate-600/50 bg-slate-900/80 backdrop-blur-2xl shadow-2xl shadow-cyan-900/20 rounded-2xl p-8 md:p-12 transform transition-all duration-500">
+                    <div class="flex items-center justify-between mb-8">
+                        <span class="px-3 py-1 rounded-full bg-cyan-500/10 text-cyan-400 border border-cyan-500/20 text-xs font-bold uppercase tracking-wider">Live Broadcast</span>
+                        <div class="flex gap-1">
+                            <span class="w-2 h-2 rounded-full bg-red-500 animate-bounce"></span>
+                            <span class="w-2 h-2 rounded-full bg-red-500 animate-bounce delay-100"></span>
+                            <span class="w-2 h-2 rounded-full bg-red-500 animate-bounce delay-200"></span>
+                        </div>
+                    </div>
+
+                    <h3 class="text-2xl md:text-4xl font-bold text-white leading-tight mb-10" id="q_text">题目加载中...</h3>
+                    
+                    <div id="options_hint" class="flex gap-3 flex-wrap mb-8 hidden"></div>
+
+                    <div class="flex flex-col md:flex-row gap-4">
+                        <input id="my_answer" type="text" placeholder="在此输入你的答案..." autocomplete="off"
+                               class="flex-1 h-16 px-6 rounded-xl bg-black/40 border border-slate-600 outline-none focus:border-cyan-500 focus:bg-black/60 focus:shadow-[0_0_30px_rgba(6,182,212,0.3)] transition text-white text-xl md:text-2xl font-bold text-center md:text-left">
+                        
+                        <button onclick="submitAnswer()" id="btn_submit" 
+                                class="h-16 px-10 rounded-xl bg-gradient-to-r from-cyan-600 to-blue-600 hover:from-cyan-500 hover:to-blue-500 text-white font-bold text-lg tracking-wider shadow-lg shadow-cyan-900/40 transition active:scale-95 whitespace-nowrap">
+                            确认提交 ⏎
+                        </button>
+                    </div>
+                    <p class="text-center md:text-left text-slate-500 text-xs mt-4">PC端可直接按回车发送</p>
+                </div>
+            </div>
+
+            <!-- 场景 2: 数据中心 (PC端优化：Grid布局) -->
+            <div id="view-profile" class="hidden min-h-full p-6 md:p-12 max-w-6xl mx-auto">
+                
+                <!-- 头部 -->
+                <div class="flex flex-col md:flex-row md:items-end justify-between mb-10 gap-4">
+                    <div>
+                        <h2 class="text-3xl md:text-4xl font-bold text-white mb-2">数据分析中心</h2>
+                        <p class="text-slate-400">Performance Analytics & History</p>
+                    </div>
+                    
+                    <!-- Tab 切换 -->
+                    <div class="flex bg-slate-800/80 p-1 rounded-lg border border-slate-700">
+                        <button onclick="switchStatTab('current')" id="tab-current" class="px-6 py-2 rounded-md bg-slate-600 text-white text-sm font-bold shadow transition-all">本季</button>
+                        <button onclick="switchStatTab('history')" id="tab-history" class="px-6 py-2 rounded-md text-slate-400 hover:text-white text-sm font-bold transition-all">往季</button>
+                        <button onclick="switchStatTab('all')" id="tab-all" class="px-6 py-2 rounded-md text-slate-400 hover:text-white text-sm font-bold transition-all">生涯</button>
+                    </div>
+                </div>
+
+                <!-- 核心数据卡片 (Grid) -->
+                <div class="relative min-h-[200px] mb-12">
+                    <!-- 卡片容器 -->
+                    <div id="content-current" class="stat-content absolute w-full grid grid-cols-1 md:grid-cols-3 gap-6">
+                        <!-- 正确率大卡片 -->
+                        <div class="md:col-span-2 glass bg-gradient-to-br from-blue-900/60 to-slate-900 border border-blue-500/30 p-8 rounded-2xl relative overflow-hidden group">
+                            <div class="absolute -right-10 -top-10 w-40 h-40 bg-blue-500/20 rounded-full blur-3xl group-hover:bg-blue-500/30 transition"></div>
+                            <h4 class="text-blue-300 text-sm font-bold uppercase tracking-widest mb-4">Current Season Accuracy</h4>
+                            <div class="flex items-baseline gap-2">
+                                {% set curr_data = stats.get(current_q_key, {'total':0, 'correct':0}) %}
+                                <span class="text-7xl font-black text-white">
+                                    {{ (curr_data.correct / curr_data.total * 100)|round(0)|int if curr_data.total > 0 else 0 }}%
+                                </span>
+                            </div>
+                            <div class="mt-4 flex gap-4 text-sm text-slate-400">
+                                <span>✅ 正确: <b class="text-white">{{ curr_data.correct }}</b></span>
+                                <span>❌ 错误: <b class="text-white">{{ curr_data.total - curr_data.correct }}</b></span>
+                                <span>📝 总题: <b class="text-white">{{ curr_data.total }}</b></span>
+                            </div>
+                        </div>
+                        
+                        <!-- 连胜成就卡片 -->
+                        <div class="glass bg-slate-800/50 border border-slate-700 p-8 rounded-2xl flex flex-col justify-center items-center text-center">
+                            <div class="w-16 h-16 rounded-full bg-slate-900 border border-red-500/30 flex items-center justify-center text-3xl mb-4 shadow-lg shadow-red-900/20">🔥</div>
+                            <div class="text-2xl font-black text-white">{{ achievements.get('streak_master', 0) }}</div>
+                            <div class="text-xs text-slate-400 uppercase tracking-widest mt-1">连胜战神勋章</div>
+                        </div>
+                    </div>
+
+                    <!-- 历史/生涯内容容器 (结构类似，默认隐藏) -->
+                    <div id="content-history" class="stat-content absolute w-full hidden opacity-0">
+                        <div class="glass bg-slate-800/50 border border-slate-700 p-8 rounded-2xl text-center">
+                            <div class="grid grid-cols-2 md:grid-cols-4 gap-4">
+                                {% for quarter, data in stats.items() %}
+                                    {% if quarter != current_q_key %}
+                                    <div class="bg-slate-900 p-4 rounded-xl border border-slate-700 hover:border-slate-500 transition">
+                                        <div class="text-xs text-slate-500 mb-1">{{ quarter }}</div>
+                                        <div class="text-2xl font-bold text-white">
+                                            {{ (data.correct / data.total * 100)|round(0)|int if data.total > 0 else 0 }}%
+                                        </div>
+                                    </div>
+                                    {% endif %}
+                                {% endfor %}
+                            </div>
+                            <div id="no-history-hint" class="text-slate-500 mt-4 italic hidden">暂无历史数据</div>
+                        </div>
+                    </div>
+
+                    <div id="content-all" class="stat-content absolute w-full hidden opacity-0">
+                        <div class="glass bg-gradient-to-br from-purple-900/60 to-slate-900 border border-purple-500/30 p-8 rounded-2xl text-center">
+                            <h4 class="text-purple-300 text-sm font-bold uppercase tracking-widest mb-2">Lifetime Career</h4>
+                            <div class="text-7xl font-black text-white" id="all-time-rate">0%</div>
+                            <div class="text-purple-200 mt-2" id="all-time-detail">Total Answered: 0</div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- 答题时间轴 -->
+                <h3 class="text-xl font-bold text-white mb-6 flex items-center gap-2">
+                    <span>📜</span> 答题记录 <span class="text-xs font-normal text-slate-500 bg-slate-800 px-2 py-1 rounded ml-2">Recent 50</span>
+                </h3>
+                <div class="space-y-3">
+                    {% if history %}
+                        {% for ans, ques in history %}
+                        <div class="group flex items-center gap-4 p-4 rounded-xl border border-slate-800 bg-slate-900/40 hover:bg-slate-800 transition cursor-default">
+                            <div class="w-2 h-12 rounded-full {{ 'bg-green-500 shadow-[0_0_10px_#22c55e]' if ans.is_correct else 'bg-red-500' }}"></div>
+                            <div class="flex-1">
+                                <div class="text-xs text-slate-500 mb-1 font-mono">{{ ans.timestamp.strftime('%Y-%m-%d %H:%M') }}</div>
+                                <div class="text-sm md:text-base font-bold text-slate-200">{{ ques.content }}</div>
+                            </div>
+                            <div class="text-right">
+                                <div class="text-xs text-slate-500 mb-1">Your Answer</div>
+                                <div class="font-mono font-bold {{ 'text-green-400' if ans.is_correct else 'text-red-400' }} text-lg">{{ ans.content }}</div>
+                            </div>
+                        </div>
+                        {% endfor %}
+                    {% else %}
+                        <div class="text-center py-10 text-slate-600">暂无记录</div>
+                    {% endif %}
+                </div>
+            </div>
+        </div>
+    </main>
+
+    <!-- Mobile 底部导航 (PC隐藏) -->
+    <div class="md:hidden fixed bottom-6 left-1/2 -translate-x-1/2 w-48 h-14 bg-slate-900/90 backdrop-blur-md border border-slate-700 rounded-full flex items-center justify-around px-2 shadow-2xl z-50">
+        <button onclick="switchTab('quiz')" id="mobile-nav-quiz" class="text-cyan-400 scale-125 transition-all text-xl">⚡</button>
+        <button onclick="switchTab('profile')" id="mobile-nav-profile" class="text-slate-500 transition-all text-xl">👤</button>
+    </div>
+
+</div>
+
+<!-- 粒子爆炸结算 (保持原样，略微优化z-index) -->
+<div id="result_modal" class="fixed inset-0 z-[200] hidden overflow-hidden bg-black/90 backdrop-blur-md">
+    <div id="particle_stage" class="absolute inset-0 pointer-events-none"></div>
+    <div id="res_content" class="absolute inset-0 flex flex-col items-center justify-center p-6 z-10 opacity-0">
+        <div id="res_icon" class="text-9xl mb-6 scale-0 filter drop-shadow-[0_0_30px_rgba(255,255,255,0.5)]"></div>
+        <h2 id="res_title" class="text-6xl md:text-8xl font-black text-white mb-4 tracking-tighter uppercase scale-150">WIN</h2>
+        <p id="res_subtitle" class="text-slate-400 text-xl mb-12">正确答案: <span id="res_ans" class="text-white font-bold bg-slate-800 px-3 py-1 rounded border border-slate-700">A</span></p>
+        <div class="flex flex-col md:flex-row gap-4 w-full max-w-md">
+            <button onclick="showFullData()" class="flex-1 py-4 rounded-xl bg-slate-800 text-blue-400 font-bold border border-slate-700 hover:bg-slate-700 hover:text-white transition">📊 全班数据</button>
+            <button onclick="closeResultModal()" class="flex-1 py-4 rounded-xl bg-white text-black font-bold hover:bg-gray-200 transition shadow-[0_0_20px_rgba(255,255,255,0.3)]">下一题 ➜</button>
+        </div>
+    </div>
+    <div id="full_data_view" class="absolute inset-0 bg-[#0B1120] z-30 hidden flex flex-col p-6 animate-fade-in">
+        <div class="flex justify-between items-center mb-4">
+            <h3 class="text-white font-bold text-lg uppercase tracking-wider">Class Overview</h3>
+            <button onclick="hideFullData()" class="text-slate-400 px-4 py-2 rounded border border-slate-700 hover:bg-slate-800 hover:text-white transition">Close ✕</button>
+        </div>
+        <div id="student_result_stage" class="flex-1 overflow-x-auto flex items-end gap-8 pb-10 border-b border-slate-800"></div>
+    </div>
+</div>
+
+<script>
+    // --- PC端 回车提交 ---
+    document.getElementById("my_answer").addEventListener("keypress", function(event) {
+        if (event.key === "Enter") {
+            event.preventDefault();
+            submitAnswer();
+        }
+    });
+
+    // --- 互动 Canvas 3.0: 量子力场 (Quantum Field) ---
+    const canvas = document.getElementById('bg_canvas');
+    const ctx = canvas.getContext('2d');
+    let width, height;
+    // 粒子系统
+    const particleCount = 100; // PC端性能好，粒子多一点
+    const particles = [];
+    const mouse = { x: -1000, y: -1000, active: false }; // 初始在屏幕外
+
+    function resize() { width = canvas.width = window.innerWidth; height = canvas.height = window.innerHeight; }
+    window.addEventListener('resize', resize); resize();
+
+    class Particle {
+        constructor() {
+            this.x = Math.random() * width; this.y = Math.random() * height;
+            this.vx = (Math.random() - 0.5) * 0.5; this.vy = (Math.random() - 0.5) * 0.5;
+            this.size = Math.random() * 2 + 1;
+            this.baseColor = `hsla(${Math.random() * 60 + 180}, 100%, 70%, `; // Cyan-Blue range
+        }
+        update() {
+            // 自然漂浮
+            this.x += this.vx; this.y += this.vy;
+            if(this.x < 0 || this.x > width) this.vx *= -1;
+            if(this.y < 0 || this.y > height) this.vy *= -1;
+
+            // 鼠标交互：引力黑洞
+            if (mouse.active) {
+                const dx = mouse.x - this.x; const dy = mouse.y - this.y;
+                const dist = Math.sqrt(dx*dx + dy*dy);
+                const force = (500 - dist) / 500; // 范围更大
+                if (dist < 500) {
+                    this.x += (dx/dist) * force * 5; // 吸入
+                    this.y += (dy/dist) * force * 5;
+                }
+            }
+        }
+        draw() {
+            const dx = mouse.x - this.x; const dy = mouse.y - this.y;
+            const dist = Math.sqrt(dx*dx + dy*dy);
+            
+            ctx.beginPath();
+            ctx.arc(this.x, this.y, this.size, 0, Math.PI * 2);
+            // 靠近鼠标变亮
+            const alpha = mouse.active && dist < 300 ? 1 : 0.3;
+            ctx.fillStyle = this.baseColor + alpha + ")";
+            ctx.fill();
+        }
+    }
+
+    for(let i=0; i<particleCount; i++) particles.push(new Particle());
+
+    // 鼠标监听
+    window.addEventListener('mousemove', e => { mouse.x = e.clientX; mouse.y = e.clientY; });
+    window.addEventListener('mousedown', () => { mouse.active = true; });
+    window.addEventListener('mouseup', () => { mouse.active = false; explodeParticles(); }); // 松开爆炸
+
+    function explodeParticles() {
+        particles.forEach(p => {
+            const dx = p.x - mouse.x; const dy = p.y - mouse.y;
+            const dist = Math.sqrt(dx*dx + dy*dy);
+            if(dist < 300) {
+                p.vx = (dx/dist) * 10; p.vy = (dy/dist) * 10; // 强力弹开
+            }
+        });
+    }
+
+    function animate() {
+        ctx.clearRect(0, 0, width, height);
+        
+        // 绘制连线网络
+        particles.forEach((p, i) => {
+            p.update(); p.draw();
+            for(let j=i; j<particles.length; j++) {
+                const p2 = particles[j];
+                const dx = p.x - p2.x; const dy = p.y - p2.y;
+                const dist = Math.sqrt(dx*dx + dy*dy);
+                if(dist < 100) {
+                    ctx.beginPath();
+                    ctx.strokeStyle = `rgba(6, 182, 212, ${0.1 - dist/1000})`; // 非常淡的线
+                    ctx.lineWidth = 0.5;
+                    ctx.moveTo(p.x, p.y); ctx.lineTo(p2.x, p2.y);
+                    ctx.stroke();
+                }
+            }
+        });
+        requestAnimationFrame(animate);
+    }
+    animate();
+
+    // --- Tab 切换逻辑 (PC + Mobile) ---
+    function switchTab(tab) {
+        const q = document.getElementById('view-quiz'); 
+        const p = document.getElementById('view-profile');
+        
+        // Mobile Nav Buttons
+        const mQ = document.getElementById('mobile-nav-quiz');
+        const mP = document.getElementById('mobile-nav-profile');
+        
+        // PC Nav Buttons
+        const pcQ = document.getElementById('pc-nav-quiz');
+        const pcP = document.getElementById('pc-nav-profile');
+
+        if(tab === 'quiz') { 
+            q.classList.remove('hidden'); p.classList.add('hidden'); 
+            
+            // Update Mobile
+            mQ.className = "text-cyan-400 scale-125 transition-all text-xl"; mP.className = "text-slate-500 transition-all text-xl";
+            // Update PC
+            pcQ.className = "w-full flex items-center gap-4 px-4 py-3 rounded-xl transition-all duration-200 group bg-blue-600 text-white shadow-lg shadow-blue-900/50";
+            pcP.className = "w-full flex items-center gap-4 px-4 py-3 rounded-xl hover:bg-slate-800/50 text-slate-400 hover:text-white transition-all duration-200 group";
+        } else { 
+            q.classList.add('hidden'); p.classList.remove('hidden');
+            
+            // Update Mobile
+            mP.className = "text-cyan-400 scale-125 transition-all text-xl"; mQ.className = "text-slate-500 transition-all text-xl";
+            // Update PC
+            pcP.className = "w-full flex items-center gap-4 px-4 py-3 rounded-xl transition-all duration-200 group bg-blue-600 text-white shadow-lg shadow-blue-900/50";
+            pcQ.className = "w-full flex items-center gap-4 px-4 py-3 rounded-xl hover:bg-slate-800/50 text-slate-400 hover:text-white transition-all duration-200 group";
+            
+            // Animate Profile Entry
+            gsap.from("#view-profile > div", {y: 20, opacity: 0, duration: 0.4, stagger: 0.1});
+        }
+    }
+
+    // --- 数据统计 Tab 切换 (GSAP 动画) ---
+    let activeStatTab = 'current';
+    function switchStatTab(tabName) {
+        if(activeStatTab === tabName) return;
+        ['current', 'history', 'all'].forEach(t => {
+            const btn = document.getElementById(`tab-${t}`);
+            btn.className = (t === tabName) 
+                ? "px-6 py-2 rounded-md bg-slate-600 text-white text-sm font-bold shadow transition-all"
+                : "px-6 py-2 rounded-md text-slate-400 hover:text-white text-sm font-bold transition-all";
+        });
+        const oldC = document.getElementById(`content-${activeStatTab}`);
+        const newC = document.getElementById(`content-${tabName}`);
+        
+        gsap.to(oldC, {autoAlpha: 0, y: -20, duration: 0.2, onComplete: () => {
+            oldC.classList.add('hidden');
+            newC.classList.remove('hidden');
+            gsap.fromTo(newC, {autoAlpha: 0, y: 20}, {autoAlpha: 1, y: 0, duration: 0.3});
+        }});
+        activeStatTab = tabName;
+    }
+
+    // --- 数据计算 (生涯) ---
+    const rawStats = JSON.parse('{{ stats | tojson | safe }}');
+    const currentQuarter = "{{ current_q_key }}";
+    let allCorrect = 0, allTotal = 0, hasHistory = false;
+    if (rawStats && typeof rawStats === 'object') {
+        for (const [key, val] of Object.entries(rawStats)) {
+            allCorrect += val.correct || 0; allTotal += val.total || 0;
+            if (key !== currentQuarter) hasHistory = true;
+        }
+    }
+    const allRate = allTotal > 0 ? Math.round((allCorrect / allTotal) * 100) : 0;
+    document.getElementById('all-time-rate').innerHTML = `${allRate}%`;
+    document.getElementById('all-time-detail').innerText = `Total Answered: ${allTotal}`;
+    if(!hasHistory) document.getElementById('no-history-hint')?.classList.remove('hidden');
+
+    // --- Socket 逻辑 ---
+    const socket = io();
+    let currentQId = null;
+    const myUsername = "{{ user.username }}";
+    let lastResultData = null; 
+
+    socket.on('receive_question', (data) => {
+        currentQId = data.id;
+        switchTab('quiz');
+        document.getElementById('result_modal').classList.add('hidden');
+        document.getElementById('waiting_area').classList.add('hidden');
+        const qArea = document.getElementById('question_area');
+        qArea.classList.remove('hidden');
+        gsap.fromTo(qArea, {scale: 0.95, opacity: 0}, {scale: 1, opacity: 1, duration: 0.4});
+        document.getElementById('q_text').innerText = data.content;
+        document.getElementById('my_answer').value = '';
+        const optHint = document.getElementById('options_hint');
+        if (data.options && data.type === 'choice') {
+            optHint.classList.remove('hidden');
+            optHint.innerHTML = data.options.split(',').map(o => `<span class="bg-cyan-900/50 px-3 py-1 rounded text-sm text-cyan-200 border border-cyan-700/50">${o}</span>`).join('');
+        } else { optHint.classList.add('hidden'); }
+        // 聚焦输入框 (仅PC)
+        if(window.innerWidth > 768) document.getElementById('my_answer').focus();
+    });
+
+    function submitAnswer() {
+        const val = document.getElementById('my_answer').value;
+        if(!val) return;
+        socket.emit('submit_answer', {question_id: currentQId, content: val});
+        const btn = document.getElementById('btn_submit');
+        btn.innerText = "已提交 ✓"; btn.classList.remove('from-cyan-600', 'to-blue-600'); btn.classList.add('bg-green-600');
+    }
+
+    socket.on('grading_complete', (data) => {
+        lastResultData = data; 
+        document.getElementById('question_area').classList.add('hidden');
+        document.getElementById('waiting_area').classList.remove('hidden');
+        const modal = document.getElementById('result_modal');
+        modal.classList.remove('hidden');
+
+        let win = false;
+        Object.values(data.groups).forEach(list => { list.forEach(s => { if(s.name === myUsername && s.is_correct) win = true; }) });
+
+        const icon = document.getElementById('res_icon');
+        const title = document.getElementById('res_title');
+        document.getElementById('res_ans').innerText = data.stats.answer;
+
+        if(win) { icon.innerText = "🎉"; title.innerText = "WINNER"; title.className = "text-6xl md:text-8xl font-black text-green-400 mb-4 tracking-tighter uppercase"; }
+        else { icon.innerText = "💥"; title.innerText = "MISSED"; title.className = "text-6xl md:text-8xl font-black text-slate-500 mb-4 tracking-tighter uppercase"; }
+
+        // 粒子爆炸
+        createExplosion(window.innerWidth / 2, window.innerHeight / 2, win ? '#4ade80' : '#94a3b8');
+        gsap.to("#res_content", {opacity: 1, duration: 0.1, delay: 0.2}); 
+        gsap.fromTo(icon, {scale: 0}, {scale: 1, duration: 0.6, ease: "elastic.out(1, 0.5)", delay: 0.2});
+        gsap.fromTo(title, {scale: 2, opacity: 0}, {scale: 1, opacity: 1, duration: 0.4, ease: "power4.out", delay: 0.3});
+    });
+
+    // 粒子爆炸函数 (保持不变)
+    function createExplosion(x, y, color) {
+        const stage = document.getElementById('particle_stage');
+        stage.innerHTML = ''; // Clear prev
+        for (let i = 0; i < 50; i++) {
+            const p = document.createElement('div');
+            p.className = "absolute w-2 h-2 rounded-full";
+            p.style.backgroundColor = color;
+            p.style.left = x + 'px'; p.style.top = y + 'px';
+            stage.appendChild(p);
+            const angle = Math.random() * Math.PI * 2;
+            const velocity = 100 + Math.random() * 200;
+            gsap.to(p, {
+                x: Math.cos(angle) * velocity, y: Math.sin(angle) * velocity, 
+                opacity: 0, scale: 0, duration: 0.5 + Math.random() * 0.5, ease: "power2.out"
+            });
+        }
+    }
+    function closeResultModal() { location.reload(); }
+    
+    // 全班数据展示 (保持不变)
+    function showFullData() {
+        document.getElementById('full_data_view').classList.remove('hidden');
+        const stage = document.getElementById('student_result_stage');
+        stage.innerHTML = '';
+        const groups = lastResultData.groups;
+        const correctAns = lastResultData.stats.answer.toUpperCase();
+        const MAX_PER_COL = 12; 
+        Object.keys(groups).forEach((key) => {
+            const students = groups[key];
+            const isTarget = (key === correctAns) || (key === 'CORRECT');
+            const groupWrapper = document.createElement('div');
+            groupWrapper.className = "flex flex-col items-center h-full justify-end mx-2"; 
+            const colsContainer = document.createElement('div');
+            colsContainer.className = "flex gap-1 items-end"; 
+            const colCount = Math.ceil(students.length / MAX_PER_COL) || 1;
+            for (let i = 0; i < colCount; i++) {
+                const subCol = document.createElement('div');
+                subCol.className = "flex flex-col-reverse gap-1 w-16 pb-2"; 
+                const chunk = students.slice(i * MAX_PER_COL, (i + 1) * MAX_PER_COL);
+                chunk.forEach((s, idx) => {
+                    const block = document.createElement('div');
+                    block.innerText = s.name;
+                    let bg = "bg-slate-700 text-slate-400 border-slate-600";
+                    if(isTarget) bg = "bg-blue-600 text-white border-blue-500 font-bold";
+                    if(key === 'WRONG') bg = "bg-red-900 text-white border-red-700";
+                    if(key === 'CORRECT') bg = "bg-green-600 text-white border-green-500";
+                    block.className = `w-full h-6 text-[10px] flex items-center justify-center rounded border ${bg} truncate`;
+                    subCol.appendChild(block);
+                    gsap.from(block, {y: -200, opacity: 0, duration: 0.5, delay: idx * 0.02});
+                });
+                colsContainer.appendChild(subCol);
+            }
+            groupWrapper.appendChild(colsContainer);
+            const label = document.createElement('div');
+            label.className = `mt-1 font-black text-xl ${isTarget ? 'text-blue-400' : 'text-slate-600'}`;
+            label.innerText = key;
+            groupWrapper.appendChild(label);
+            stage.appendChild(groupWrapper);
+        });
+    }
+    function hideFullData() { document.getElementById('full_data_view').classList.add('hidden'); }
+</script>
+<style>
+    @keyframes fade-in { from {opacity:0} to {opacity:1} }
+    .animate-fade-in { animation: fade-in 0.3s ease-out; }
+</style>
+{% endblock %}
