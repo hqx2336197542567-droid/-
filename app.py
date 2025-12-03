@@ -15,18 +15,16 @@ import traceback
 app = Flask(__name__)
 app.config['SECRET_KEY'] = 'secret_key_123'
 
-# ==========================================
-# ★★★ 数据库智能连接 ★★★
-# ==========================================
+# 数据库连接
 database_url = os.environ.get('DATABASE_URL')
 if database_url:
     if database_url.startswith("postgres://"):
         database_url = database_url.replace("postgres://", "postgresql://", 1)
     app.config['SQLALCHEMY_DATABASE_URI'] = database_url
-    print(f"--- 🌍 检测到云端数据库环境 ---")
+    print(f"--- 🌍 云端数据库 ---")
 else:
     app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:///classsync.db'
-    print(f"--- 💻 使用本地 SQLite 数据库 ---")
+    print(f"--- 💻 本地数据库 ---")
 
 app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
 app.config['SESSION_PERMANENT'] = True
@@ -102,8 +100,7 @@ def login():
                 return render_template('login.html', error="密码错误")
         except Exception as e:
             print(f"Login Error: {e}")
-            traceback.print_exc()
-            return "数据库连接错误，请检查日志", 500
+            return "Database Error", 500
     return render_template('login.html')
 
 @app.route('/teacher')
@@ -125,8 +122,7 @@ def student_dashboard():
             .order_by(Answer.timestamp.desc())\
             .limit(50).all()
         return render_template('student.html', user=current_user, stats=stats, achievements=achievements, current_q_key=current_q_key, history=history_records)
-    except Exception as e:
-        traceback.print_exc()
+    except:
         return redirect(url_for('logout'))
 
 @app.route('/logout')
@@ -180,20 +176,54 @@ def handle_get_questions_history():
             for ans in answers:
                 if ans.is_correct: correct_count += 1
                 ans_details.append({'student': ans.student_name, 'content': ans.content, 'is_correct': ans.is_correct})
-            
             correct_display = "未设置"
             if q.correct_answer:
                 try:
                     c_list = json.loads(q.correct_answer)
                     correct_display = " / ".join(c_list) if isinstance(c_list, list) else str(c_list)
                 except: correct_display = q.correct_answer
-
             history_data.append({
                 'id': q.id, 'content': q.content, 'type': q.question_type, 'timestamp': q.timestamp.strftime('%Y-%m-%d %H:%M'),
                 'correct_answer': correct_display, 'total_answers': len(answers), 'correct_count': correct_count, 'details': ans_details
             })
         socketio.emit('questions_history_response', history_data, to=request.sid)
     except: traceback.print_exc()
+
+# ★★★ 新增：删除学生 ★★★
+@socketio.on('delete_student')
+def handle_delete_student(data):
+    if not current_user.is_admin: return
+    username = data.get('username')
+    try:
+        print(f"Deleting student: {username}")
+        # 1. 删除该学生的所有回答
+        Answer.query.filter_by(student_name=username).delete()
+        # 2. 删除用户账号
+        User.query.filter_by(username=username).delete()
+        db.session.commit()
+        # 3. 刷新列表
+        handle_get_all_stats()
+    except Exception as e:
+        db.session.rollback()
+        print(f"Delete error: {e}")
+
+# ★★★ 新增：删除题目 ★★★
+@socketio.on('delete_question')
+def handle_delete_question(data):
+    if not current_user.is_admin: return
+    q_id = data.get('id')
+    try:
+        print(f"Deleting question: {q_id}")
+        # 1. 删除相关回答
+        Answer.query.filter_by(question_id=q_id).delete()
+        # 2. 删除题目
+        Question.query.filter_by(id=q_id).delete()
+        db.session.commit()
+        # 3. 刷新列表
+        handle_get_questions_history()
+    except Exception as e:
+        db.session.rollback()
+        print(f"Delete error: {e}")
 
 @socketio.on('new_question')
 def handle_new_question(data):
@@ -214,7 +244,6 @@ def handle_answer(data):
         socketio.emit('receive_danmaku', {'student': current_user.username, 'content': data['content']}, to=None)
     except: pass
 
-# 模拟数据
 @socketio.on('simulate_data')
 def handle_simulation(data):
     if not current_user.is_admin: return
@@ -240,25 +269,16 @@ def handle_simulation(data):
     db.session.commit()
     socketio.emit('simulation_done', {'count': count})
 
-# ★★★ 核心修复：清除 Bot 数据逻辑 (v3.15) ★★★
 @socketio.on('clear_bots')
 def handle_clear_bots():
     if not current_user.is_admin: return
     try:
-        print("🧹 开始清理机器人数据...")
-        # 1. 删除所有机器人的回答 (Like 'Bot_%')
         Answer.query.filter(Answer.student_name.like('Bot_%')).delete(synchronize_session=False)
-        # 2. 删除所有机器人用户
         User.query.filter(User.username.like('Bot_%')).delete(synchronize_session=False)
         db.session.commit()
-        print(f"✅ 清理完成")
-        # 通知前端并刷新数据
         socketio.emit('simulation_done', {'count': "已清空"})
         handle_get_all_stats()
-    except Exception as e:
-        db.session.rollback()
-        print(f"❌ 清理失败: {e}")
-        traceback.print_exc()
+    except: pass
 
 @socketio.on('stop_and_grade')
 def handle_stop_grade(data):
@@ -312,7 +332,6 @@ def handle_stop_grade(data):
         socketio.emit('grading_complete', {'groups': groups, 'type': question.question_type, 'stats': {'total': total_students, 'correct': correct_count, 'answer': display_ans_str}})
     except Exception as e: traceback.print_exc()
 
-# 数据库初始化
 with app.app_context():
     try:
         db.create_all()
@@ -320,11 +339,7 @@ with app.app_context():
             admin = User(username='admin', password='123', is_admin=True)
             db.session.add(admin)
             db.session.commit()
-            print("--- 🔑 管理员账号初始化完成: admin / 123 ---")
-        else:
-            print("--- ✅ 数据库检查通过，管理员已存在 ---")
-    except Exception as e:
-        print(f"!!! 数据库初始化警告: {e}")
+    except: pass
 
 if __name__ == '__main__':
     socketio.run(app, host='0.0.0.0', debug=True, port=5000)
