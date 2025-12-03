@@ -94,13 +94,9 @@
                         <div class="text-8xl font-black tracking-tighter opacity-30">READY</div>
                         <div class="text-sm font-bold tracking-[1em] mt-4 opacity-30 text-blue-500 uppercase">System Standby</div>
                     </div>
-
-                    <!-- 弹幕层 -->
                     <div id="danmaku_container" class="absolute inset-0 overflow-y-auto p-8 scroll-smooth z-10 transition-all duration-700 custom-scrollbar">
                         <div id="danmaku_stage" class="flex flex-wrap content-start gap-3 min-h-full pb-32 pr-20"></div>
                     </div>
-
-                    <!-- 结果展示层 -->
                     <div id="result_container" class="absolute inset-0 z-50 bg-[#0f172a]/95 backdrop-blur-xl flex flex-col border-t border-blue-500/30 shadow-[0_-20px_50px_rgba(0,0,0,0.8)]" style="visibility: hidden; opacity: 0; transform: translateY(100%);">
                         <div class="h-16 border-b border-slate-800 flex items-center justify-center relative bg-[#0f172a]">
                             <span class="text-sm font-black text-blue-400 uppercase tracking-[0.3em]">Analysis Result</span>
@@ -144,6 +140,7 @@
                 </div>
                 <button onclick="closeDataCenter()" class="w-12 h-12 rounded-full bg-slate-800 flex items-center justify-center text-slate-400 hover:bg-red-600 hover:text-white transition text-xl font-bold">✕</button>
             </div>
+            
             <div class="flex-1 overflow-auto p-8 md:p-12 custom-scrollbar relative">
                 <!-- 学生数据 -->
                 <div id="view_student_data" class="hidden">
@@ -155,6 +152,7 @@
                                 <th class="pb-6 w-1/6">本季正确率</th>
                                 <th class="pb-6 w-1/6">生涯总题</th>
                                 <th class="pb-6 text-right pr-6">生涯总胜率</th>
+                                <th class="pb-6 text-right pr-6">操作</th> <!-- 新增操作列 -->
                             </tr>
                         </thead>
                         <tbody id="student_data_list" class="text-base font-medium text-slate-300"></tbody>
@@ -166,22 +164,19 @@
         </div>
     </div>
 
-    <!-- 上帝模式 & 清除功能 -->
+    <!-- 上帝模式 -->
     <div class="fixed bottom-6 right-6 z-50 flex flex-col gap-2 group">
         <div class="w-12 h-12 rounded-full bg-slate-800/80 backdrop-blur border border-slate-600 flex items-center justify-center cursor-pointer hover:bg-slate-700 shadow-xl group-hover:hidden transition text-slate-400 text-xl">⚡</div>
         <div class="hidden group-hover:flex flex-col bg-[#0f172a] border border-slate-600 p-4 rounded-xl shadow-2xl w-56 animate-fade-in-up">
             <h4 class="text-white font-bold mb-3 border-b border-slate-700 pb-2 text-xs">压力测试</h4>
             <button onclick="simulate('random')" class="mb-2 w-full py-2 rounded bg-purple-600 hover:bg-purple-500 text-white text-xs font-bold">🎲 60 Bots (Random)</button>
-            <button onclick="simulate('stacked')" class="mb-4 w-full py-2 rounded bg-orange-600 hover:bg-orange-500 text-white text-xs font-bold">🏢 50 Bots (Stack)</button>
-            <!-- 清除按钮 -->
-            <button onclick="clearBots()" class="w-full py-2 rounded border border-red-500/50 text-red-400 hover:bg-red-900/30 text-xs font-bold transition flex items-center justify-center gap-2">
-                <span>🗑️</span> 清除 Bots
-            </button>
-            <div id="sim_status" class="text-[10px] text-slate-400 mt-2 text-center border-t border-slate-800 pt-2">Idle</div>
+            <button onclick="simulate('stacked')" class="w-full py-2 rounded bg-orange-600 hover:bg-orange-500 text-white text-xs font-bold">🏢 50 Bots (Stack)</button>
+            <button onclick="clearBots()" class="w-full py-2 rounded border border-red-500/50 text-red-400 hover:bg-red-900/30 text-xs font-bold transition flex items-center justify-center gap-2">🗑️ 清除 Bots</button>
+            <div id="sim_status" class="text-[10px] text-slate-400 mt-2 text-center">Idle</div>
         </div>
     </div>
 
-    <div class="fixed bottom-2 left-2 text-[10px] text-slate-700 pointer-events-none select-none z-50">v3.16 Stable</div>
+    <div class="fixed bottom-2 left-2 text-[10px] text-slate-700 pointer-events-none select-none z-50">v3.17 Management</div>
 </div>
 
 <script src="https://cdnjs.cloudflare.com/ajax/libs/gsap/3.12.2/gsap.min.js"></script>
@@ -192,7 +187,6 @@
     let hideAnswers = false; 
     let answerCount = 0; 
 
-    // 初始化
     const resCont = document.getElementById('result_container');
     gsap.set(resCont, { y: "100%", autoAlpha: 0 });
 
@@ -304,13 +298,7 @@
         socket.emit('simulate_data', { question_id: currentQId, mode: mode });
     }
     socket.on('simulation_done', (data) => document.getElementById('sim_status').innerText = `Done: ${data.count}`);
-    
-    // 清除 Bot
-    function clearBots() {
-        if (!confirm("确定清除 Bot 数据？")) return;
-        document.getElementById('sim_status').innerText = "Cleaning...";
-        socket.emit('clear_bots');
-    }
+    function clearBots() { if(!confirm("确定删除 Bots?")) return; socket.emit('clear_bots'); }
 
     function openDataCenter(type) {
         const modal = document.getElementById('data_center_modal');
@@ -327,10 +315,10 @@
             document.getElementById('view_question_data').classList.add('hidden');
             socket.emit('get_all_students_stats'); 
         } else {
-            title.innerText = "题目数据 (History)";
+            title.innerText = "题目数据";
             document.getElementById('view_student_data').classList.add('hidden');
             document.getElementById('view_question_data').classList.remove('hidden');
-            document.getElementById('view_question_data').innerHTML = '<div class="text-center text-slate-500 py-10">Loading History...</div>';
+            document.getElementById('view_question_data').innerHTML = '<div class="text-center text-slate-500 py-10">Loading...</div>';
             socket.emit('get_questions_history'); 
         }
     }
@@ -340,6 +328,18 @@
         const content = document.getElementById('dc_content');
         gsap.to(backdrop, {opacity: 0, duration: 0.3});
         gsap.to(content, { opacity: 0, y: 50, duration: 0.3, ease: "power2.in", onComplete: () => modal.classList.add('hidden') });
+    }
+
+    // ★★★ 新增：删除学生函数 ★★★
+    function deleteStudent(username) {
+        if(!confirm(`⚠️ 警告：确定要彻底删除学生 [${username}] 的所有数据吗？此操作不可逆！`)) return;
+        socket.emit('delete_student', { username: username });
+    }
+
+    // ★★★ 新增：删除题目函数 ★★★
+    function deleteQuestion(id) {
+        if(!confirm(`⚠️ 警告：确定要删除这条题目记录吗？相关的学生答题记录也会被清除。`)) return;
+        socket.emit('delete_question', { id: id });
     }
     
     socket.on('all_students_stats_response', (data) => {
@@ -355,21 +355,27 @@
             } else if (s.curr_rate >= 50) {
                 rateColorClass = "text-emerald-400"; barColorClass = "bg-emerald-500"; rateBgClass = "bg-emerald-900/30 border-emerald-700 text-emerald-300";
             }
-            tr.innerHTML = `<td class="py-5 pl-6 relative">${sparkEffect}<div class="flex items-center gap-4 relative z-10"><div class="w-10 h-10 rounded-full bg-slate-800 flex items-center justify-center text-sm font-bold border border-slate-700 shadow-inner group-hover:scale-110 transition-transform">${s.username[0].toUpperCase()}</div><span class="text-lg font-bold tracking-wide ${textHighlight}">${s.username}</span></div></td><td class="py-5 font-bold text-slate-400 relative z-10 text-base font-sans">${s.curr_total} 次</td><td class="py-5 relative z-10"><div class="flex items-center gap-3"><div class="w-24 h-2 rounded-full bg-slate-800 overflow-hidden shadow-inner"><div class="h-full rounded-full ${barColorClass} transition-all duration-1000" style="width: ${s.curr_rate}%"></div></div><span class="${rateColorClass} font-black text-lg font-sans">${s.curr_rate}%</span></div></td><td class="py-5 font-bold text-slate-300 relative z-10 text-base font-sans">${s.all_total}</td><td class="py-5 text-right pr-6 relative z-10"><span class="inline-block px-3 py-1.5 rounded-lg border text-sm font-black font-sans ${rateBgClass}">${s.all_rate}% Win</span></td>`;
+            tr.innerHTML = `
+                <td class="py-5 pl-6 relative">${sparkEffect}<div class="flex items-center gap-4 relative z-10"><div class="w-10 h-10 rounded-full bg-slate-800 flex items-center justify-center text-sm font-bold border border-slate-700 shadow-inner group-hover:scale-110 transition-transform">${s.username[0].toUpperCase()}</div><span class="text-lg font-bold tracking-wide ${textHighlight}">${s.username}</span></div></td>
+                <td class="py-5 font-bold text-slate-400 relative z-10 text-base font-sans">${s.curr_total} 次</td>
+                <td class="py-5 relative z-10"><div class="flex items-center gap-3"><div class="w-24 h-2 rounded-full bg-slate-800 overflow-hidden shadow-inner"><div class="h-full rounded-full ${barColorClass} transition-all duration-1000" style="width: ${s.curr_rate}%"></div></div><span class="${rateColorClass} font-black text-lg font-sans">${s.curr_rate}%</span></div></td>
+                <td class="py-5 font-bold text-slate-300 relative z-10 text-base font-sans">${s.all_total}</td>
+                <td class="py-5 text-right pr-6 relative z-10"><span class="inline-block px-3 py-1.5 rounded-lg border text-sm font-black font-sans ${rateBgClass}">${s.all_rate}% Win</span></td>
+                <!-- 删除按钮 -->
+                <td class="py-5 text-right pr-6 relative z-10">
+                    <button onclick="deleteStudent('${s.username}')" class="text-slate-600 hover:text-red-500 transition p-2 rounded hover:bg-red-500/10"><span class="text-lg">🗑️</span></button>
+                </td>
+            `;
             if(rowClass) tr.classList.add(...rowClass.split(' '));
             tbody.appendChild(tr);
             gsap.to(tr, {opacity: 1, x: 0, duration: 0.4, delay: index * 0.05, startAt: {x: -20}});
         });
     });
 
-    // ★★★ 修复历史列表 (无动画直显) ★★★
     socket.on('questions_history_response', (data) => {
         const container = document.getElementById('view_question_data');
         container.innerHTML = '';
-        if(data.length === 0) {
-            container.innerHTML = '<div class="text-center text-slate-500">No questions recorded.</div>';
-            return;
-        }
+        if(data.length === 0) { container.innerHTML = '<div class="text-center text-slate-500">No data.</div>'; return; }
         data.forEach((q, idx) => {
             const item = document.createElement('details');
             item.className = "group glass bg-slate-800/30 border border-slate-700/50 rounded-xl overflow-hidden open:bg-slate-800/60 transition-all";
@@ -378,14 +384,14 @@
             summary.innerHTML = `
                 <div class="flex items-center gap-4">
                     <div class="w-8 h-8 rounded bg-slate-700 flex items-center justify-center text-xs font-bold text-slate-400 border border-slate-600">${data.length - idx}</div>
-                    <div>
-                        <div class="text-white font-bold text-lg">${q.content}</div>
-                        <div class="text-slate-500 text-xs mt-0.5 font-mono">${q.timestamp} • ${q.type === 'sort' ? '排序' : '单选'}</div>
-                    </div>
+                    <div><div class="text-white font-bold text-lg">${q.content}</div><div class="text-slate-500 text-xs mt-0.5 font-mono">${q.timestamp} • ${q.type}</div></div>
                 </div>
                 <div class="flex items-center gap-6">
-                    <div class="text-right"><div class="text-xs text-slate-500">Answer</div><div class="font-bold text-emerald-400 font-mono">${q.correct_answer}</div></div>
-                    <div class="text-right"><div class="text-xs text-slate-500">Stats</div><div class="font-bold text-white"><span class="text-emerald-400">${q.correct_count}</span> / ${q.total_answers}</div></div>
+                    <div class="text-right"><div class="text-xs text-slate-500">Ans</div><div class="font-bold text-emerald-400 font-mono">${q.correct_answer}</div></div>
+                    
+                    <!-- 删除按钮 -->
+                    <button onclick="deleteQuestion(${q.id})" class="text-slate-600 hover:text-red-500 p-2 rounded hover:bg-red-500/10 transition z-20"><span class="text-lg">🗑️</span></button>
+                    
                     <span class="text-slate-500 transform group-open:rotate-180 transition">▼</span>
                 </div>`;
             const content = document.createElement('div');
@@ -398,9 +404,8 @@
                 });
                 blocks += `</div>`;
                 content.innerHTML = blocks;
-            } else { content.innerHTML = `<div class="text-slate-500 text-xs italic">No answers.</div>`; }
+            } else { content.innerHTML = `<div class="text-slate-500 text-xs italic">Empty.</div>`; }
             item.appendChild(summary); item.appendChild(content); container.appendChild(item);
-            // 无 GSAP
         });
     });
 
